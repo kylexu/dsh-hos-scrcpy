@@ -85,6 +85,39 @@ Dev/doc-sidecar.md                    sidecar 协议、编译（必须 --release
 - sidecar 的协议 / 编译 / 排障 → [`Dev/doc-sidecar.md`](Dev/doc-sidecar.md)
 - **基于 core 开发一个 provider** → [core/Dev/doc.md](https://github.com/ns-zzj/dsh-scrcpy-core/blob/main/Dev/doc.md)
 
+## 电脑键盘与文本粘贴（3.0.5）
+
+新增手动电脑输入通道。界面仍由 core 渲染；本仓库附带 `client/computer-input.js` 作为显式 core 配套补丁的源文件，不单独注册另一套投屏界面。仅安装 provider 不会出现新输入区，需应用下方补丁。现有 AI 工具权限不变，面板输入由用户主动操作，目标固定为该面板已连接的设备。
+
+1. 在投屏画面中点击手机的目标输入框。
+2. 在下方电脑输入区使用电脑输入法打字，或按 **Ctrl+V** 粘贴电脑中的纯文本。
+3. 默认先编辑，再点 **输入到手机**，也可按 **Ctrl+Enter**。这只输入文字，不额外按手机回车。
+4. 开启 **实时输入** 后，在这个输入区打字或 Ctrl+V 会直接提交到手机。中文输入法的拼音和候选词留在电脑，只提交已确认的文字。实时模式支持退格、删除、方向键、Home/End、Tab、Ctrl+A 和 Shift 组合键；**Enter 会发送手机回车，聊天应用可能因此发送消息**。Esc 退出实时模式并取消尚未发出的队列。
+5. **粘贴电脑文本** 按钮读取电脑剪贴板中的纯文本并直接输入到手机。若浏览器不允许读取，请使用输入区 Ctrl+V，再点输入按钮。暂不传输图片、文件或富文本。
+
+这条通道通过 HDC 和 `uitest`/`uinput` 工作，不是 UHID 虚拟键盘；焦点须留在目标手机输入框中，电脑按键只在电脑输入区中转发。逐键有延迟，文本按顺序排队并合并尚未执行的相邻文本；切走面板停止后续排队输入。失败或结果不明时停止，不自动重放；输入区保留待核对文本，当前失败项可能已经进入手机，需检查后再决定是否输入。单次最多 **4096 个 UTF-8 字节**，超长文本明确拒绝，不会静默截断。
+
+### 应用 core 面板补丁
+
+仅支持经过源码哈希校验的 `@nszzj/dsh-scrcpy-core` **1.0.2**，不兼容未知修改或新版本。脚本不在 provider 安装时自动运行：
+
+```powershell
+node scripts/patch-core-input.mjs "$env:USERPROFILE\.dsh\profiles\desktop\node_modules\@nszzj\dsh-scrcpy-core" --check
+node scripts/patch-core-input.mjs "$env:USERPROFILE\.dsh\profiles\desktop\node_modules\@nszzj\dsh-scrcpy-core"
+```
+
+修改前备份 core 的 `client/client.js` 为 `client/client.js.before-computer-input`，再次运行同一补丁为幂等检查。应用后完全重启 DSH 并重新打开/刷新投屏面板。回滚时恢复这个备份并重启；core 升级可能覆盖补丁，不要强制套用到未知源码。
+
+### 手机复制到电脑
+
+**当前不支持读取手机系统剪贴板或双向自动同步。** 现有 HOScrcpy SDK 没有剪贴板 API，已检查设备的普通 HDC/uitest 命令也没有获取剪贴板文本的接口。`PasteboardService` 的 `hidumper --data` 在上游实现中只返回来源、时间、MIME 类型等元数据，不返回文本内容，不能代替剪贴板读取。不能把控件树文字或 OCR 结果当成用户复制的内容。
+
+反向复制需要额外的手机端组件，在用户手势与设备权限允许时读取剪贴板，再通过受限通道回传；这尚未实现和验收。当前可以由用户主动将文本分享/导出到电脑可打开的位置，再在电脑中复制。
+
+### 验证范围
+
+自动测试覆盖 IME 候选输入不转发、确认词提交一次、Ctrl+V 多行 Unicode 原文传输、设备级顺序、编辑键映射、失败停止、断连复查及 core 补丁语法/幂等。HDC 字节验证使用伪 `uitest`，不操作手机界面。实际应用输入、回车语义和输入法事件顺序仍需在安装后通过真实投屏面板验收。
+
 ## 中文输入修复（3.0.4）
 
 Windows 版 `hdc.exe` 可能在接收命令行参数时把中文变成 `?`。文本现在先编码为纯 ASCII 的 UTF-8 八进制序列，再在设备 shell 中还原后交给 `uitest uiInput text`。中文、emoji、引号、shell 特殊字符和首尾空白均保留；不会把用户内容当成 shell 代码执行。
