@@ -85,6 +85,14 @@ Dev/doc-sidecar.md                    sidecar 协议、编译（必须 --release
 - sidecar 的协议 / 编译 / 排障 → [`Dev/doc-sidecar.md`](Dev/doc-sidecar.md)
 - **基于 core 开发一个 provider** → [core/Dev/doc.md](https://github.com/ns-zzj/dsh-scrcpy-core/blob/main/Dev/doc.md)
 
+## 中文输入修复（3.0.4）
+
+Windows 版 `hdc.exe` 可能在接收命令行参数时把中文变成 `?`。文本现在先编码为纯 ASCII 的 UTF-8 八进制序列，再在设备 shell 中还原后交给 `uitest uiInput text`。中文、emoji、引号、shell 特殊字符和首尾空白均保留；不会把用户内容当成 shell 代码执行。
+
+输入只执行一次，使用随机完成标记检查设备端退出码；HDC 本机退出码为零不足以证明远端输入成功。移除了错误的 `uinput -T` 回退（该选项是触摸操作），不在失败或结果未知时自动重试。一次输入最多 4096 个 UTF-8 字节，拒绝 NUL 和无效 Unicode。工具返回成功表示设备输入命令已完成，最终画面仍应通过控件或截图核对后再发送。
+
+可选的真机只读验证：设置 `DSH_HDC_TEST_PATH` 为 HDC 可执行文件、`DSH_HDC_TEST_SN` 为设备序列号，再运行 `node --test --test-isolation=none`。测试用 shell 函数覆写 `uitest`，只检查字节及远端退出码，**不会向设备输入文本**。在限制子进程管道的沙箱中运行此项测试需要允许 HDC 子进程。
+
 ## 桌面版兼容修复（3.0.3）
 
 - 控件坐标改用 `DisplayManagerService` 的当前逻辑显示尺寸，支持横竖屏，并排除投屏虚拟屏尺寸。不再把控件最大边界当成屏幕大小。
