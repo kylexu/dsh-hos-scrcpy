@@ -85,6 +85,37 @@ Dev/doc-sidecar.md                    sidecar 协议、编译（必须 --release
 - sidecar 的协议 / 编译 / 排障 → [`Dev/doc-sidecar.md`](Dev/doc-sidecar.md)
 - **基于 core 开发一个 provider** → [core/Dev/doc.md](https://github.com/ns-zzj/dsh-scrcpy-core/blob/main/Dev/doc.md)
 
+## 桌面版兼容修复（3.0.3）
+
+- 控件坐标改用 `DisplayManagerService` 的当前逻辑显示尺寸，支持横竖屏，并排除投屏虚拟屏尺寸。不再把控件最大边界当成屏幕大小。
+- 即使仅能读到状态栏，也使用真实屏幕尺寸归一化坐标，避免把 `1600×137` 的状态栏当成整个屏幕。无法查询真实尺寸时返回明确错误。此修复不会让兼容层或自绘应用凭空提供控件树；这类界面仍需截图识别。
+- 当前 `scrcpy_screenshot` 的版本检查属于 **core**。本包旧版 `hos_scrcpy_screenshot` 中遗留的检测函数不是 3.x 的执行入口，单改它无法修复截图工具。
+
+### core 1.0.x 的显式配套修复
+
+桌面安装包中的 DSH 可能位于 `resources/app.asar`，旧版 core 只检查 CLI 安装目录，从而误报“无法读取 DSH 版本”。仓库附带 `scripts/patch-core-version.mjs`，读取归档内真实的 `@deepseek-ai/dsh/package.json`；同时保留旧 CLI 和自定义 profile 布局支持。它不伪造版本，不改变最低版本限制、设备权限或每次确认流程。
+
+此脚本**不会在安装本插件时自动运行**，需要明确指定 core 的包目录。先检查，再应用：
+
+```powershell
+node scripts/patch-core-version.mjs "$env:USERPROFILE\.dsh\profiles\desktop\node_modules\@nszzj\dsh-scrcpy-core" --check
+node scripts/patch-core-version.mjs "$env:USERPROFILE\.dsh\profiles\desktop\node_modules\@nszzj\dsh-scrcpy-core"
+```
+
+脚本仅接受已知的 core 1.0.x 检测实现，遇到未知代码会停止；修改前保存 `lib/index.js.before-dsh-version-fix`。自定义安装位置若无法自动发现，可将 `DSH_ASAR_PATH` 设置为真实的桌面 `app.asar` 路径，再完全重启 DSH。归档读取有大小限制，不会把整个桌面应用读入内存。
+
+应用补丁后，**完全退出并重启 DSH**。只刷新网页不会重载宿主插件。回滚时将备份恢复为 core 的 `lib/index.js`，删除本脚本添加的 core `lib/dsh-version.js`，然后重启。core 更新可能覆盖补丁，需重新运行 `--check`；不应对未知的新版本强制应用。
+
+### 开发验证
+
+```sh
+node --test
+# 沙箱禁止测试进程管道时（需支持此参数的 Node 版本）：
+node --test --test-isolation=none
+```
+
+可选：将 `DSH_CORE_TEST_ROOT` 设置为已安装的 core 包目录后运行测试，会对它的真实截图工具入口做模拟集成验证，检查版本、权限和确认仍有效；不修改安装文件、不实际截图或发送设备操作。
+
 ## 许可与第三方
 
 - 本包：**MIT**（见 `LICENSE`）
